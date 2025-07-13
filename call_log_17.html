@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Overnight Call Log</title>
+  <style>
+    body { font-family: sans-serif; margin: 1rem; background: #f1f2f6; }
+    h1 { text-align: center; }
+    button, select { padding: 4px; font-size: 1rem; margin: 0 4px 10px 0; }
+    .entry {
+      background: white;
+      padding: 10px;
+      margin-top: 10px;
+      border-left: 5px solid #636e72;
+    }
+    .flagged { border-left-color: #d63031; background-color: #ffebeb; }
+    .completed { background-color: #c3f7cc; }
+    .timestamp { font-size: 0.9rem; color: #636e72; }
+    .entry-controls {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 0px;
+      padding-top: 0px;
+    }
+    .entry-controls button {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      cursor: pointer;
+    }
+    .btn-complete { color: green; }
+    .btn-flag { color: orange; }
+    .btn-delete { color: red; }
+    .vital-abnormal { color: red; font-weight: bold; }
+    #formContainer {
+      display: none;
+      margin-bottom: 20px;
+    }
+    #formContainer textarea {
+      width: 100%;
+      margin: 2px 0;
+      font-size: 1.1rem;
+      padding: 2px;
+      height: 1.2;
+    }
+  </style>
+</head>
+<body>
+  <h1>Overnight Call Log</h1>
+  <div style="text-align: center; margin-bottom: 10px;">
+    <button id="toggleFormBtn" onclick="toggleForm()">Add Call</button>
+    <button onclick="exportLogAsPdf()">Export Log as PDF</button>
+    <button onclick="resetLog()">Reset Log</button>
+  </div>
+
+  <div id="formContainer">
+    <div><strong>Call:</strong></div>
+    <textarea id="complaint" placeholder="Chief complaint" rows="2"></textarea>
+    <textarea id="room" placeholder="Room"></textarea>
+    <textarea id="nurse" placeholder="Nurse"></textarea>
+    <textarea id="page" placeholder="Ext"></textarea>
+
+    <div><strong>Patient:</strong></div>
+    <textarea id="patientName" placeholder="Last name, First name"></textarea>
+    <textarea id="mrn" placeholder="MRN"></textarea>
+    <textarea id="admissionReason" placeholder="Reason for admission"></textarea>
+    <textarea id="most" placeholder="MOST"></textarea>
+
+    <div><strong>Vitals:</strong></div>
+    <textarea id="bp" placeholder="BP"></textarea>
+    <textarea id="pulse" placeholder="Pulse"></textarea>
+    <textarea id="temp" placeholder="Temp"></textarea>
+    <textarea id="sat" placeholder="Sat"></textarea>
+
+    <div><strong>Notes:</strong></div>
+    <textarea id="notes" placeholder="Notes/Updates" style="width: 100%;" rows="3"></textarea>
+
+    <button onclick="submitEntry()">Submit</button>
+  </div>
+
+  <label for="filterSelect">Filter by:</label>
+  <select id="filterSelect" onchange="renderLog()">
+    <option value="all">All</option>
+    <option value="completed">Completed</option>
+    <option value="incomplete">Incomplete</option>
+    <option value="flagged">Flagged</option>
+    <option value="seen">Seen</option>
+  </select>
+
+  <div id="log"></div>
+
+  <script>
+    const log = JSON.parse(localStorage.getItem("callLog") || "[]");
+    let editingIndex = null;
+
+    function saveLog() {
+      localStorage.setItem("callLog", JSON.stringify(log));
+    }
+
+    function clearForm() {
+      document.getElementById("complaint").value = "";
+      document.getElementById("room").value = "";
+      document.getElementById("nurse").value = "";
+      document.getElementById("page").value = "";
+      document.getElementById("patientName").value = "";
+      document.getElementById("mrn").value = "";
+      document.getElementById("admissionReason").value = "";
+      document.getElementById("most").value = "";
+      document.getElementById("bp").value = "";
+      document.getElementById("pulse").value = "";
+      document.getElementById("temp").value = "";
+      document.getElementById("sat").value = "";
+      document.getElementById("notes").value = "";
+    }
+
+    function toggleForm() {
+      const form = document.getElementById("formContainer");
+      const btn = document.getElementById("toggleFormBtn");
+      const isHidden = form.style.display === "none";
+      form.style.display = isHidden ? "block" : "none";
+      btn.textContent = isHidden ? "Cancel" : "Add Call";
+      if (!isHidden) {
+        editingIndex = null;
+        clearForm();
+      }
+    }
+
+    function submitEntry() {
+      const entry = {
+        time: new Date().toISOString(),
+        complaint: document.getElementById("complaint").value,
+        room: document.getElementById("room").value,
+        nurse: document.getElementById("nurse").value,
+        page: document.getElementById("page").value,
+        patientName: document.getElementById("patientName").value,
+        mrn: document.getElementById("mrn").value,
+        admissionReason: document.getElementById("admissionReason").value,
+        most: document.getElementById("most").value,
+        bp: document.getElementById("bp").value,
+        pulse: parseInt(document.getElementById("pulse").value),
+        temp: parseFloat(document.getElementById("temp").value),
+        sat: parseInt(document.getElementById("sat").value),
+        notes: document.getElementById("notes").value
+      };
+      if (!entry.complaint) {
+        alert("Please enter a complaint.");
+        return;
+      }
+      if (editingIndex !== null) {
+        entry.time = log[editingIndex].time;
+        entry.flag = log[editingIndex].flag;
+        entry.seen = log[editingIndex].seen;
+        entry.completed = log[editingIndex].completed;
+        log[editingIndex] = entry;
+        editingIndex = null;
+      } else {
+        log.push(entry);
+      }
+      saveLog();
+      renderLog();
+      clearForm();
+      document.getElementById("formContainer").style.display = "none";
+      document.getElementById("toggleFormBtn").textContent = "Add Call";
+    }
+
+    function renderLog() {
+      const container = document.getElementById("log");
+      const filter = document.getElementById("filterSelect").value;
+      container.innerHTML = "";
+      log.forEach((entry, i) => {
+        if (filter === "completed" && !entry.completed) return;
+        if (filter === "incomplete" && entry.completed) return;
+        if (filter === "flagged" && !entry.flag) return;
+        if (filter === "seen" && !entry.seen) return;
+
+        const pulseClass = entry.pulse > 100 ? "vital-abnormal" : "";
+        const bpParts = (entry.bp || "").split("/");
+        const bpClass = bpParts.length === 2 && (parseInt(bpParts[0]) > 140 || parseInt(bpParts[1]) > 90) ? "vital-abnormal" : "";
+        const tempClass = entry.temp > 37.5 ? "vital-abnormal" : "";
+        const satClass = entry.sat < 92 ? "vital-abnormal" : "";
+
+        const div = document.createElement("div");
+        div.className = "entry" + (entry.flag ? " flagged" : "") + (entry.completed ? " completed" : "");
+        div.innerHTML = `
+          <div class="timestamp">Logged at: ${new Date(entry.time).toLocaleString()}</div>
+          <div style="font-size: 0.9rem;">
+            <strong>${entry.complaint}</strong><br>
+            Room: ${entry.room || "-"} | Nurse: ${entry.nurse || "-"} | <strong style="color: blue;">Ext:</strong> ${entry.page || "-"}<br>
+            Patient: ${entry.patientName || "-"} | MRN: ${entry.mrn || "-"}<br>
+            Admission: ${entry.admissionReason || "-"} | MOST: ${entry.most || "-"}<br>
+            Vitals: BP: <span class="${bpClass}">${entry.bp || "-"}</span> |
+            Pulse: <span class="${pulseClass}">${entry.pulse || "-"}</span> |
+            Temp: <span class="${tempClass}">${entry.temp ? `${entry.temp}°C` : "-"}</span> |
+            Sat: <span class="${satClass}">${entry.sat ? `${entry.sat}%` : "-"}</span><br>
+            ${entry.notes ? `<div style=\"background-color: #f9f1c8; padding: 6px; border-radius: 4px;\"><strong>Notes/Updates:</strong> ${entry.notes}</div>` : ""}
+            <div class="entry-controls">
+              <button class="btn-flag" onclick="toggleFlag(${i})">${entry.flag ? "🚩" : "⚐"}</button>
+              <button class="btn-viewed" onclick="toggleSeen(${i})">${entry.seen ? '✅' : '👁️'}</button>
+              <button class="btn-complete" onclick="toggleComplete(${i})">${entry.completed ? "✔" : "✓"}</button>
+              <button class="btn-delete" onclick="deleteEntry(${i})">&times;</button>
+              <button onclick="editEntry(${i})">✏️</button>
+            </div>
+          </div>
+        `;
+        container.prepend(div);
+      });
+    }
+
+    function toggleFlag(i) { log[i].flag = !log[i].flag; saveLog(); renderLog(); }
+    function toggleSeen(i) { log[i].seen = !log[i].seen; saveLog(); renderLog(); }
+    function toggleComplete(i) { log[i].completed = !log[i].completed; saveLog(); renderLog(); }
+    function deleteEntry(i) {
+      if (confirm("Delete this entry?")) {
+        log.splice(i, 1);
+        saveLog();
+        renderLog();
+      }
+    }
+    function resetLog() {
+      if (confirm("Reset all entries?")) {
+        localStorage.removeItem("callLog");
+        log.length = 0;
+        renderLog();
+      }
+    }
+    function exportLogAsPdf() {
+      const html = `
+        <html>
+          <head><title>Call Log Export</title></head>
+          <body>
+            <h2>Overnight Call Log</h2>
+            <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; font-family: sans-serif; font-size: 0.9rem;">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Complaint</th>
+                  <th>Room</th>
+                  <th>Nurse</th>
+                  <th>Ext</th>
+                  <th>Patient Name</th>
+                  <th>MRN</th>
+                  <th>Admission Reason</th>
+                  <th>MOST</th>
+                  <th>BP</th>
+                  <th>Pulse</th>
+                  <th>Temp</th>
+                  <th>Sat</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${log.map(entry => `
+                  <tr>
+                    <td>${new Date(entry.time).toLocaleString()}</td>
+                    <td>${entry.complaint || "-"}</td>
+                    <td>${entry.room || "-"}</td>
+                    <td>${entry.nurse || "-"}</td>
+                    <td>${entry.page || "-"}</td>
+                    <td>${entry.patientName || "-"}</td>
+                    <td>${entry.mrn || "-"}</td>
+                    <td>${entry.admissionReason || "-"}</td>
+                    <td>${entry.most || "-"}</td>
+                    <td>${entry.bp || "-"}</td>
+                    <td>${entry.pulse || "-"}</td>
+                    <td>${entry.temp !== undefined ? entry.temp + "°C" : "-"}</td>
+                    <td>${entry.sat !== undefined ? entry.sat + "%" : "-"}</td>
+                    <td>${entry.notes || "-"}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `;
+      const win = window.open("", "", "width=1000,height=700");
+      win.document.write(html);
+      win.document.close();
+      win.print();
+    }
+    function editEntry(i) {
+      const entry = log[i];
+      editingIndex = i;
+      document.getElementById("complaint").value = entry.complaint;
+      document.getElementById("room").value = entry.room;
+      document.getElementById("nurse").value = entry.nurse;
+      document.getElementById("page").value = entry.page;
+      document.getElementById("patientName").value = entry.patientName;
+      document.getElementById("mrn").value = entry.mrn;
+      document.getElementById("admissionReason").value = entry.admissionReason;
+      document.getElementById("most").value = entry.most;
+      document.getElementById("bp").value = entry.bp;
+      document.getElementById("pulse").value = entry.pulse;
+      document.getElementById("temp").value = entry.temp;
+      document.getElementById("sat").value = entry.sat;
+      document.getElementById("notes").value = entry.notes;
+      document.getElementById("formContainer").style.display = "block";
+      document.getElementById("toggleFormBtn").textContent = "Cancel";
+    }
+
+    renderLog();
+  </script>
+</body>
+</html>
