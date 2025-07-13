@@ -49,7 +49,7 @@
   </style>
 </head>
 <body>
-  <h1>Overnight Call Log</h1>
+  <h1>Overnight Call Log Ver 1.0</h1>
   <div style="text-align: center; margin-bottom: 10px;">
     <button id="toggleFormBtn" onclick="toggleForm()">Add Call</button>
     <button onclick="exportLogAsPdf()">Export Log as PDF</button>
@@ -91,7 +91,7 @@
   </select>
 
   <div id="log"></div>
-
+<div id="logSummary" style="margin-top: 10px; font-size: 0.9rem; color: #2d3436;"></div>
   <script>
     const log = JSON.parse(localStorage.getItem("callLog") || "[]");
     let editingIndex = null;
@@ -208,7 +208,15 @@
         container.prepend(div);
       });
     }
+const summary = {
+  total: log.length,
+  completed: log.filter(e => e.completed).length,
+  flagged: log.filter(e => e.flag).length,
+  seen: log.filter(e => e.seen).length
+};
 
+document.getElementById("logSummary").textContent =
+  `Calls: ${summary.total} | Completed: ${summary.completed} | Flagged: ${summary.flagged} | Seen: ${summary.seen}`;
     function toggleFlag(i) { log[i].flag = !log[i].flag; saveLog(); renderLog(); }
     function toggleSeen(i) { log[i].seen = !log[i].seen; saveLog(); renderLog(); }
     function toggleComplete(i) { log[i].completed = !log[i].completed; saveLog(); renderLog(); }
